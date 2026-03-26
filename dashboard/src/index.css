@@ -1,6 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-secondary: #10b981;
+  --color-dark: #1f2937;
+}
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -35,6 +39,6 @@ body {
   }
 }
 
-.glass {
+@utility glass {
   @apply bg-white/10 backdrop-blur-md border border-white/20 rounded-xl;
 }

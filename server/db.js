@@ -78,4 +78,36 @@ const getHistory = (clientId, limit = 24) => {
     });
 };
 
-module.exports = { initDb, updateClient, getAllClients, getHistory };
+const getDailyHistory = (clientId) => {
+    return new Promise((resolve, reject) => {
+        db.all(`SELECT 
+                    SUBSTR(timestamp, 1, 10) as date, 
+                    SUM(sent) as sent, 
+                    SUM(received) as received 
+                FROM usage_logs 
+                WHERE client_id = ? 
+                GROUP BY date 
+                ORDER BY date DESC`,
+        [clientId],
+        (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
+
+const deleteClient = (id) => {
+    return new Promise((resolve, reject) => {
+        db.serialize(() => {
+            db.run(`DELETE FROM usage_logs WHERE client_id = ?`, [id], (err) => {
+                if (err) return reject(err);
+                db.run(`DELETE FROM clients WHERE id = ?`, [id], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+        });
+    });
+};
+
+module.exports = { initDb, updateClient, getAllClients, getHistory, getDailyHistory, deleteClient };

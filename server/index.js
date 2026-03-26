@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const { initDb, updateClient, getAllClients, getHistory } = require('./db');
+const { initDb, updateClient, getAllClients, getHistory, getDailyHistory, deleteClient } = require('./db');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,6 +30,24 @@ app.get('/api/history/:clientId', async (req, res) => {
     try {
         const history = await getHistory(req.params.clientId);
         res.json(history);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/history/daily/:clientId', async (req, res) => {
+    try {
+        const dailyHistory = await getDailyHistory(req.params.clientId);
+        res.json(dailyHistory);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/clients/:id', async (req, res) => {
+    try {
+        await deleteClient(req.params.id);
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
