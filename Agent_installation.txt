@@ -1,0 +1,1 @@
+powershell.exe -ExecutionPolicy Bypass -File "f:\Onedrive\Tharindu\Researches\InternetUsage_Checker\internetusagecheker\agent\Register-AgentTask.ps1"

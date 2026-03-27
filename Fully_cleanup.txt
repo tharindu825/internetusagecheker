@@ -1,0 +1,11 @@
+# 1. Kill all processes
+Get-Process | Where-Object { $_.Name -match 'node' -or $_.CommandLine -match 'InternetAgent' } | Stop-Process -Force -ErrorAction SilentlyContinue
+
+# 2. Delete all old tasks
+Get-ScheduledTask -TaskName "*InternetUsage*" -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false
+
+# 3. Wipe the folders and database
+Remove-Item "C:\InternetUsageTracker" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item "C:\ProgramData\InternetUsageTracker\usage_tracker.db" -Force -ErrorAction SilentlyContinue
+
+Write-Host "--- FULL UNINSTALL COMPLETE ---" -ForegroundColor Green
