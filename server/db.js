@@ -13,10 +13,10 @@ const db = new sqlite3.Database(dbPath);
 const initDb = () => {
     return new Promise((resolve, reject) => {
         db.serialize(() => {
-            // Clients table (Added 'type' column for identification)
+            // Clients table (Identity Lock: Hostname is now the deduplication key)
             db.run(`CREATE TABLE IF NOT EXISTS clients (
                 id TEXT PRIMARY KEY,
-                hostname TEXT,
+                hostname TEXT UNIQUE,
                 type TEXT,
                 last_seen DATETIMEOFFSET,
                 total_sent INTEGER DEFAULT 0,
@@ -42,10 +42,13 @@ const initDb = () => {
 const updateClient = (id, hostname, sent, received, type = 'classic') => {
     return new Promise((resolve, reject) => {
         const now = new Date().toISOString();
+        
+        // Identity Lock Logic:
+        // Instead of just Conflict(id), we check for Conflict(hostname)
+        // This merges any "Duplicate" IDs that share the same Computer Name!
         db.run(`INSERT INTO clients (id, hostname, type, last_seen, total_sent, total_received)
                 VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                hostname = excluded.hostname,
+                ON CONFLICT(hostname) DO UPDATE SET
                 type = excluded.type,
                 last_seen = excluded.last_seen,
                 total_sent = total_sent + excluded.total_sent,
@@ -54,13 +57,18 @@ const updateClient = (id, hostname, sent, received, type = 'classic') => {
         function(err) {
             if (err) return reject(err);
             
-            // Insert log
-            db.run(`INSERT INTO usage_logs (client_id, sent, received, timestamp)
-                    VALUES (?, ?, ?, ?)`,
-            [id, sent, received, now],
-            (err) => {
-                if (err) reject(err);
-                else resolve();
+            // Get the actual stored ID (after internal merge) for the log
+            db.get(`SELECT id FROM clients WHERE hostname = ?`, [hostname], (err, row) => {
+                if (err || !row) return reject(err || new Error("ID not found"));
+                
+                // Insert log
+                db.run(`INSERT INTO usage_logs (client_id, sent, received, timestamp)
+                        VALUES (?, ?, ?, ?)`,
+                [row.id, sent, received, now],
+                (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
             });
         });
     });
@@ -75,7 +83,7 @@ const getAllClients = () => {
     });
 };
 
-const getHistory = (clientId, limit = 24) => {
+const getHistory = (clientId, limit = 48) => {
     return new Promise((resolve, reject) => {
         db.all(`SELECT * FROM usage_logs WHERE client_id = ? ORDER BY timestamp DESC LIMIT ?`,
         [clientId, limit],

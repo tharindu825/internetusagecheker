@@ -1,27 +1,18 @@
-# InternetUsageAgent v2.2 (Global Network Monitor)
-# tracks "True Internet" across ALL active adapters (Ethernet, VPN, Wi-Fi) simultaneously.
-# Self-healing: mirrors itself to C:\InternetUsageTracker for stability.
+# InternetUsageAgent v3.0 (Identity Lock + SMB Shield)
+# tracks "True Internet" across ALL active adapters (Ethernet, VPN, Wi-Fi).
+# Uses Cumulative SMB Protocol Counters for perfect "Local vs Internet" separation.
 
 $ServerIP = "192.168.1.32"
 $Port = "3001"
 $ReportInterval = 30 # Seconds
 
-# 1. State & Client ID (Stable UUID)
+# 1. State & Identity Lock (HOSTNAME is the Master ID)
 $Hostname = hostname
-try {
-    $ClientID = ([guid]((Get-CimInstance Win32_ComputerSystemProduct -ErrorAction Stop).UUID)).ToString()
-} catch {
-    $IDPath = Join-Path $env:ALLUSERSPROFILE "InternetUsageTracker_ID.txt"
-    if (Test-Path $IDPath) { $ClientID = Get-Content $IDPath }
-    else {
-        $ClientID = [System.Guid]::NewGuid().ToString()
-        $ClientID | Out-File $IDPath | Out-Null
-    }
-}
+$ClientID = "$Hostname-v3" # Locked ID to computer name
 
 # 2. Path & Auto-Mirror Logic
 $LocalDir = "C:\InternetUsageTracker"
-$LogPath = Join-Path $LocalDir "agent_v2_debug.txt"
+$LogPath = Join-Path $LocalDir "agent_v3_debug.txt"
 if (-not (Test-Path $LocalDir)) { New-Item -Path $LocalDir -ItemType Directory -Force | Out-Null }
 
 function Log-Debug {
@@ -30,95 +21,98 @@ function Log-Debug {
     "[$Timestamp] $Message" | Out-File -FilePath $LogPath -Append -Encoding utf8
 }
 
-Log-Debug "--- Starting Global Monitor v2.2 on $Hostname ---"
-Log-Debug "Tracking ID: $ClientID"
+Log-Debug "--- Starting Identity Lock v3.0 on $Hostname ---"
 
 # Global state to track cumulative bytes across ALL interfaces
 $PrevSent = @{} # Dictionary: Alias -> Bytes
 $PrevRecv = @{}
+$PrevSmbSent = @{}
+$PrevSmbRecv = @{}
 $IsFirstRun = $true
 
 while ($true) {
     try {
-        # A. Find ALL active network adapters (Physical + VPN)
-        # We explicitly ignore VMware/VirtualBox 'Loop' adapters to avoid double-counting
+        # A. Find ALL active physical and VPN adapters
         $ActiveAdapters = Get-NetAdapter | Where-Object { 
             $_.Status -eq 'Up' -and 
             $_.Name -notmatch 'VMware|VirtualBox|Loopback' 
         }
 
-        $TotalSentDelta = 0
-        $TotalRecvDelta = 0
+        # B. Get Cumulative SMB Stats (Client + Server)
+        # This is the "SMB Shield" - much more accurate than per-second rates.
+        $SmbClientStats = Get-SmbClientNetworkInterface -ErrorAction SilentlyContinue
+        $SmbServerStats = Get-SmbServerNetworkInterface -ErrorAction SilentlyContinue
+
+        $TotalInternetSent = 0
+        $TotalInternetRecv = 0
 
         foreach ($adapter in $ActiveAdapters) {
             $name = $adapter.Name
             $stats = Get-NetAdapterStatistics -Name $name -ErrorAction SilentlyContinue
             if ($null -eq $stats) { continue }
 
-            $currSent = $stats.SentBytes
-            $currRecv = $stats.ReceivedBytes
+            $currTotalSent = $stats.SentBytes
+            $currTotalRecv = $stats.ReceivedBytes
+
+            # Find matching SMB stats for THIS adapter
+            # SMB Client "Sent" is actually "Write" traffic
+            $adaptSmbClient = $SmbClientStats | Where-Object { $_.InterfaceAlias -eq $name }
+            $adaptSmbServer = $SmbServerStats | Where-Object { $_.InterfaceAlias -eq $name }
+
+            # TOTAL SMB BYTES on this interface
+            $currSmbSent = [uint64](($adaptSmbClient.BytesSent | Measure-Object -Sum).Sum + ($adaptSmbServer.BytesSent | Measure-Object -Sum).Sum)
+            $currSmbRecv = [uint64](($adaptSmbClient.BytesReceived | Measure-Object -Sum).Sum + ($adaptSmbServer.BytesReceived | Measure-Object -Sum).Sum)
 
             if (-not $IsFirstRun -and $PrevSent.ContainsKey($name)) {
-                $deltaSent = [uint64][math]::Max(0, $currSent - $PrevSent[$name])
-                $deltaRecv = [uint64][math]::Max(0, $currRecv - $PrevRecv[$name])
+                # 1. Calculate the raw deltas
+                $deltaTotalSent = [uint64][math]::Max(0, $currTotalSent - $PrevSent[$name])
+                $deltaTotalRecv = [uint64][math]::Max(0, $currTotalRecv - $PrevRecv[$name])
                 
-                $TotalSentDelta += $deltaSent
-                $TotalRecvDelta += $deltaRecv
+                # 2. Calculate the SMB deltas
+                $deltaSmbSent = [uint64][math]::Max(0, $currSmbSent - $PrevSmbSent[$name])
+                $deltaSmbRecv = [uint64][math]::Max(0, $currSmbRecv - $PrevSmbRecv[$name])
+
+                # 3. Final Internet Delta = Total - SMB
+                $finalSent = [uint64][math]::Max(0, $deltaTotalSent - $deltaSmbSent)
+                $finalRecv = [uint64][math]::Max(0, $deltaTotalRecv - $deltaSmbRecv)
+                
+                $TotalInternetSent += $finalSent
+                $TotalInternetRecv += $finalRecv
             }
 
             # Update history for next delta
-            $PrevSent[$name] = $currSent
-            $PrevRecv[$name] = $currRecv
+            $PrevSent[$name] = $currTotalSent
+            $PrevRecv[$name] = $currTotalRecv
+            $PrevSmbSent[$name] = $currSmbSent
+            $PrevSmbRecv[$name] = $currSmbRecv
         }
 
-        # B. Local SMB Subtraction (Global PC Subtraction)
-        $smbClient = Get-CimInstance Win32_PerfRawData_Counters_SMBClientShares | Where-Object { $_.Name -eq "_Total" }
-        $currSmbClientWrite = if ($smbClient) { $smbClient.WriteBytesPersec } else { 0 }
-        $currSmbClientRead = if ($smbClient) { $smbClient.ReadBytesPersec } else { 0 }
-
-        $smbServer = Get-CimInstance Win32_PerfRawData_Counters_SMBServer
-        $currSmbServerWrite = if ($smbServer) { $smbServer.WriteBytesPersec } else { 0 }
-        $currSmbServerRead = if ($smbServer) { $smbServer.ReadBytesPersec } else { 0 }
-
         if (-not $IsFirstRun) {
-            $deltaSmbSent = [uint64][math]::Max(0, ($currSmbClientWrite - $PrevSmbClientWrite) + ($currSmbServerRead - $PrevSmbServerRead))
-            $deltaSmbRecv = [uint64][math]::Max(0, ($currSmbClientRead - $PrevSmbClientRead) + ($currSmbServerWrite - $PrevSmbServerWrite))
-
-            # Final Filtered Global Result (Total - SMB)
-            $finalSent = [uint64][math]::Max(0, $TotalSentDelta - $deltaSmbSent)
-            $finalRecv = [uint64][math]::Max(0, $TotalRecvDelta - $deltaSmbRecv)
-
-            # Avoid reporting tiny noise
-            if ($finalSent -gt 5120 -or $finalRecv -gt 5120) {
+            # Avoid reporting tiny noise (Under 10KB total)
+            if ($TotalInternetSent -gt 10240 -or $TotalInternetRecv -gt 10240) {
                 $Payload = @{
                     id = [string]$ClientID
                     hostname = [string]$Hostname
-                    sent = $finalSent
-                    received = $finalRecv
-                    type = "stable-v2"
+                    sent = $TotalInternetSent
+                    received = $TotalInternetRecv
+                    type = "stable-v3"
                 } | ConvertTo-Json
 
                 # Reporting with Fallback
                 $URLs = @("http://$ServerIP`:$Port/api/report", "http://localhost:$Port/api/report")
                 foreach ($Url in $URLs) {
                     try {
-                        Invoke-RestMethod -Uri $Url -Method Post -Body $Payload -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                        Log-Debug "Global Report: Sent=$([math]::Round($finalSent/1MB, 2))MB Recv=$([math]::Round($finalRecv/1MB, 2))MB (Adapters=$($ActiveAdapters.Count))"
+                        Invoke-RestMethod -Uri $Url -Method Post -Body $Payload -ContentType 'application/json' -TimeoutSec 5 | Out-Null
+                        Log-Debug "Identity Lock Report: Sent=$([math]::Round($TotalInternetSent/1MB, 2))MB Recv=$([math]::Round($TotalInternetRecv/1MB, 2))MB"
                         break
                     } catch { }
                 }
             }
         }
 
-        # Save SMB for next delta
-        $PrevSmbClientWrite = $currSmbClientWrite
-        $PrevSmbClientRead = $currSmbClientRead
-        $PrevSmbServerWrite = $currSmbServerWrite
-        $PrevSmbServerRead = $currSmbServerRead
         $IsFirstRun = $false
-
     } catch {
-        Log-Debug "Global Monitor Error: $_"
+        Log-Debug "SMB Shield Error: $_"
     }
     
     Start-Sleep -Seconds $ReportInterval
