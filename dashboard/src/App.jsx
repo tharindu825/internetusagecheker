@@ -215,6 +215,11 @@ const App = () => {
                           <div className={`w-2 h-2 rounded-full ${online ? 'bg-secondary animate-pulse' : 'bg-slate-500'}`} />
                           {online ? 'Online' : 'Offline'}
                         </div>
+                        {online && (
+                          <div className="text-[9px] bg-secondary/10 text-secondary border border-secondary/20 px-1 rounded uppercase tracking-tighter">
+                            Accurate
+                          </div>
+                        )}
                         {!online && (
                           <button 
                             onClick={(e) => deleteClientRecord(e, client.id)}

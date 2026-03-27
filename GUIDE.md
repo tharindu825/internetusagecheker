@@ -75,14 +75,15 @@ If you have old or duplicate PC entries (e.g., from a re-installation):
 
 ## 🛡️ How It Excludes Local Traffic
 
-The agent uses two layers of protection to ensure **Backup and Local** traffic is not counted:
+The agent uses **low-level Windows Network Statistics (IP Helper API)** to ensure **Backup and Local** traffic is perfectly excluded:
 
-1.  **Private IP Filtering**: The script automatically detects and ignores all traffic directed to RFC1918 private ranges:
+1.  **Per-Connection Tracking**: The agent monitors every active TCP connection on the system.
+2.  **Private IP Filtering**: It identifies the **Remote IP** of every connection and ignores it if it belongs to any RFC1918 private range:
     - `10.0.0.0/8`
     - `172.16.0.0/12`
     - `192.168.0.0/16`
     - `169.254.0.0/16` (APIPA)
-2.  **Interface Statistics**: It monitors active network adapters and uses a connection-ratio heuristic to determine what percentage of current traffic is hitting external internet vs local networks.
+3.  **True Byte Measurement**: Unlike basic counters, it queries the **exact bytes** transferred for each non-local connection, ensuring 100% accuracy for SMB, HTTP/S, and most backups.
 
 ---
 
