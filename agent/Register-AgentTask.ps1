@@ -1,45 +1,24 @@
-# Register-AgentTask.ps1
-# Updated version using schtasks for better compatibility
+# Register-AgentTask.ps1 (v2.2 Global Monitor)
+# This script mirrors the agent to C:\InternetUsageTracker and registers it as a SYSTEM task.
 
-$ScriptName = "InternetUsageAgent.ps1"
-$ScriptBase = $PSScriptRoot
-$ScriptPath = Join-Path $ScriptBase $ScriptName
-$TaskName = "WindowsInternetUsageTracker"
+$LOCAL_DIR = "C:\InternetUsageTracker"
+$AGENT_FILE = "InternetAgent_v2.ps1"
+$SOURCE_PATH = Join-Path $PSScriptRoot "v2\$AGENT_FILE"
+$DEST_PATH = Join-Path $LOCAL_DIR $AGENT_FILE
 
-# Check for Administrator privileges
-$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Error "ERROR: This script must be run as Administrator."
-    Write-Host "Please right-click PowerShell and select 'Run as Administrator'." -ForegroundColor Red
-    exit
-}
+# 1. Mirroring
+if (-not (Test-Path $LOCAL_DIR)) { New-Item -Path $LOCAL_DIR -ItemType Directory -Force }
+Copy-Item -Path $SOURCE_PATH -Destination $DEST_PATH -Force
 
-# Check if script exists
-if (-not (Test-Path $ScriptPath)) {
-    Write-Error "Could not find $ScriptName at $ScriptPath"
-    exit
-}
+# 2. Registration
+$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""$DEST_PATH"""
+$Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
-Write-Host "Registering $TaskName as a background task..." -ForegroundColor Cyan
+# Unregister old tasks if they exist
+Unregister-ScheduledTask -TaskName "WindowsInternetUsageTracker" -Confirm:$false -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName "WindowsInternetUsageTrackerV2" -Confirm:$false -ErrorAction SilentlyContinue
 
-# Use schtasks.exe for better reliability across Windows versions
-# /SC ONSTART : Run at startup
-# /RU SYSTEM : Run as SYSTEM (background)
-# /RL HIGHEST: Highest privileges
-# /NP: Do not create a password prompt (important for SYSTEM)
-$Command = "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ScriptPath`""
+Register-ScheduledTask -TaskName "WindowsInternetUsageTrackerV2" -Action $Action -Principal $Principal -Force
+schtasks /run /tn "WindowsInternetUsageTrackerV2"
 
-# Force delete if exists
-& schtasks /delete /tn $TaskName /f 2>&1 | Out-Null
-
-# Create task
-& schtasks /create /tn $TaskName /tr $Command /sc onstart /ru SYSTEM /rl HIGHEST /f
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "Successfully registered!" -ForegroundColor Green
-    Write-Host "The agent will now run in the background on every system startup."
-    Write-Host "To start it manually right now, run:"
-    Write-Host "schtasks /run /tn $TaskName" -ForegroundColor Yellow
-} else {
-    Write-Error "Failed to register task using schtasks. Error code: $LASTEXITCODE"
-}
+Write-Host "--- SUCCESS: Global Monitor v2.2 is now installed and running as SYSTEM ---" -ForegroundColor Green

@@ -1,22 +1,29 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
-const dbPath = path.resolve(__dirname, 'usage_tracker.db');
+// Move Database to C:\ProgramData for System Access
+const dbDir = 'C:\\ProgramData\\InternetUsageTracker';
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+}
+const dbPath = path.join(dbDir, 'usage_tracker.db');
 const db = new sqlite3.Database(dbPath);
 
 const initDb = () => {
     return new Promise((resolve, reject) => {
         db.serialize(() => {
-            // Clients table
+            // Clients table (Added 'type' column for identification)
             db.run(`CREATE TABLE IF NOT EXISTS clients (
                 id TEXT PRIMARY KEY,
                 hostname TEXT,
+                type TEXT,
                 last_seen DATETIMEOFFSET,
                 total_sent INTEGER DEFAULT 0,
                 total_received INTEGER DEFAULT 0
             )`, (err) => { if (err) reject(err); });
 
-            // Usage logs table (Hourly aggregation or per-report)
+            // Usage logs table
             db.run(`CREATE TABLE IF NOT EXISTS usage_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 client_id TEXT,
@@ -32,17 +39,18 @@ const initDb = () => {
     });
 };
 
-const updateClient = (id, hostname, sent, received) => {
+const updateClient = (id, hostname, sent, received, type = 'classic') => {
     return new Promise((resolve, reject) => {
         const now = new Date().toISOString();
-        db.run(`INSERT INTO clients (id, hostname, last_seen, total_sent, total_received)
-                VALUES (?, ?, ?, ?, ?)
+        db.run(`INSERT INTO clients (id, hostname, type, last_seen, total_sent, total_received)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                 hostname = excluded.hostname,
+                type = excluded.type,
                 last_seen = excluded.last_seen,
                 total_sent = total_sent + excluded.total_sent,
                 total_received = total_received + excluded.total_received`,
-        [id, hostname, now, sent, received],
+        [id, hostname, type, now, sent, received],
         function(err) {
             if (err) return reject(err);
             

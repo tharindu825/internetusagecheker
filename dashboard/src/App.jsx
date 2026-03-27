@@ -208,6 +208,8 @@ const App = () => {
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h3 className="font-bold text-lg">{client.hostname}</h3>
+                      {client.type === 'stable-filtered' && <span className="text-xs text-blue-400">Stable (Filtered)</span>}
+                      {client.type === 'stable-v2' && <span className="text-xs text-green-400">High-Precision v2</span>}
                         <p className="text-xs text-slate-500 font-mono">{client.id.substring(0, 8)}...</p>
                       </div>
                       <div className="flex flex-col items-end gap-2">

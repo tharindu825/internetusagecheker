@@ -54,16 +54,21 @@ app.delete('/api/clients/:id', async (req, res) => {
 });
 
 app.post('/api/report', async (req, res) => {
-    const { id, hostname, sent, received } = req.body;
+    const { id, hostname, sent, received, type } = req.body;
+    
+    // Server-side Log (Heartbeat)
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[${timestamp}] Data Received: ${hostname} (${type || 'classic'}) - Sent: ${Math.round(sent / 1024)}KB Recv: ${Math.round(received / 1024)}KB`);
+
     if (!id || !hostname) {
         return res.status(400).json({ error: "Missing required fields" });
     }
 
     try {
-        await updateClient(id, hostname, sent, received);
+        await updateClient(id, hostname, sent, received, type);
         
         // Broadcast in real-time
-        io.emit('usage_update', { id, hostname, sent, received, timestamp: new Date().toISOString() });
+        io.emit('usage_update', { id, hostname, sent, received, type, timestamp: new Date().toISOString() });
         
         res.json({ success: true });
     } catch (err) {
@@ -71,11 +76,12 @@ app.post('/api/report', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = 3001;
 
 initDb().then(() => {
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
         console.log(`Server running on port ${PORT}`);
+        console.log(`Open Dashboard: http://localhost:3001 or http://192.168.1.32:3001`);
     });
 }).catch(err => {
     console.error("Failed to initialize database:", err);

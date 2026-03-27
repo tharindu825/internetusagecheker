@@ -1,11 +1,17 @@
+' start_hidden.vbs (Updated with Absolute Paths)
+' This script starts the Internet Usage Tracker Server and Dashboard in the absolute background.
+
 Set WshShell = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+strPath = fso.GetParentFolderName(WScript.ScriptFullName)
 
-' Start Server hidden
-WshShell.Run "cmd /c cd server && node index.js", 0, False
+' 1. Start Server in the absolute background
+WshShell.CurrentDirectory = strPath & "\server"
+WshShell.Run "cmd /c node index.js", 0, False
 
-' Start Dashboard hidden
-WshShell.Run "cmd /c cd dashboard && npm run dev", 0, False
+' 2. Start Dashboard in the absolute background
+WshShell.CurrentDirectory = strPath & "\dashboard"
+WshShell.Run "cmd /c npm run dev", 0, False
 
-MsgBox "Internet Usage Tracker Server and Dashboard are now running in the background." & vbCrLf & _
-       "Server Port: 3001" & vbCrLf & _
-       "Dashboard: http://localhost:5173", vbInformation, "Tracker Started"
+' Done!
+' MsgBox "Internet Usage Tracker is now running in the background.", 64, "Background Started"
