@@ -7,9 +7,9 @@ A centralized system designed to monitor real-time internet usage across multipl
 ## 🏗️ System Architecture
 
 The system consists of three main components:
-1.  **Backend Server (`/server`)**: A Node.js Express server with SQLite storage. It acts as the central "brain" that collects reports from all client PCs via a REST API.
+1.  **Backend Server (`/server`)**: A Node.js Express server with SQLite storage. It features an **Identity Lock** that ensures a single computer doesn't duplicate even if its ID changes.
 2.  **Frontend Dashboard (`/dashboard`)**: A modern React-based monitoring interface with real-time charts and historical tables.
-3.  **Client Agent (`/agent`)**: A lightweight PowerShell script that runs as a background task on every monitored PC, calculating and reporting internet consumption every 30 seconds.
+3.  **Client Agent (`/agent`)**: A **High-Precision Global Shield Agent (v3.1)** that runs as a background task on every monitored PC, calculating and reporting internet consumption every 30 seconds.
 
 ---
 
@@ -35,6 +35,7 @@ You have three options for starting the tracker on your main PC:
 *   **Visible (Manual)**: Double-click **`run_all.bat`**. This opens two terminal windows showing logs.
 *   **Silent (Background)**: Double-click **`Run-Tracker-Hidden.bat`**. This launches everything in the background with zero windows.
 *   **Stop Everything**: Double-click **`stop_all.bat`** to kill all background server processes.
+*   **Nuclear Reset & Fresh Start**: Right-click **`FIX-ALL-NOW.bat`** and select **"Run as Administrator"**. This kills all background processes, wipes any duplicates, and performs a complete database reset for a fresh start.
 
 > [!TIP]
 > Your dashboard will be available at: **http://localhost:5173**
@@ -73,19 +74,15 @@ If you have old or duplicate PC entries (e.g., from a re-installation):
 
 ---
 
-## 🛡️ How It Excludes Local Traffic
+## 🛡️ How It Excludes Local Traffic (v3.1)
 
-The agent uses **low-level Windows Network Statistics (IP Helper API)** to ensure **Backup and Local** traffic is perfectly excluded:
+The agent uses a **Global SMB Shield with Framing Compensation** to ensure **Backup and Local** traffic is correctly excluded:
 
-1.  **Per-Connection Tracking**: The agent monitors every active TCP connection on the system.
-2.  **Private IP Filtering**: It identifies the **Remote IP** of every connection and ignores it if it belongs to any RFC1918 private range:
-    - `10.0.0.0/8`
-    - `172.16.0.0/12`
-    - `192.168.0.0/16`
-    - `169.254.0.0/16` (APIPA)
-3.  **True Byte Measurement**: Unlike basic counters, it queries the **exact bytes** transferred for each non-local connection, ensuring 100% accuracy for SMB, HTTP/S, and most backups.
+1.  **Global Subtraction**: Instead of matching by card name, the agent sums **ALL system traffic** and subtracts **ALL local file transfer (SMB) traffic**. This is much more accurate for modern Windows and VPNs like Tailscale.
+2.  **5% Framing Bonus**: Standard protocol counters (SMB) only track file data, but the Network Card counts the whole packet including headers. The agent adds a **5% buffer** to all shielded traffic to ensure framing overhead is also excluded.
+3.  **High-Precision Filters**: It automatically handles **SMB Multichannel** and multiple network cards simultaneously without leaking usage into the "Internet" total.
 
 ---
 
 ## ⚙️ Configuration
-The server IP is currently hardcoded to **`192.168.1.32`**. If your server PC's IP address changes, you must update the `$ServerUrl` variable in `agent/InternetUsageAgent.ps1` and re-run the `InstallAgent.bat` on your clients.
+The server IP is currently hardcoded to **`192.168.1.32`**. If your server PC's IP address changes, you must update the `$ServerIP` and `$Port` variables in `agent/v2/InternetAgent_v2.ps1` and re-run the `Register-AgentTask.ps1` on your clients.

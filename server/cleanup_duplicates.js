@@ -1,23 +1,32 @@
 const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-
-// Target the stable database in C:\ProgramData
 const dbPath = 'C:\\ProgramData\\InternetUsageTracker\\usage_tracker.db';
 const db = new sqlite3.Database(dbPath);
 
-console.log("--- CLEANING UP DUPLICATE AGENTS (0B) ---");
+console.log("\n--- [NUCLEAR RESET] STARTING FULL DATABASE WIPE ---");
 
 db.serialize(() => {
-    // 1. Delete clients with zero usage (those are the duplicates)
-    db.run(`DELETE FROM clients WHERE total_received = 0`, function(err) {
-        if (err) return console.error("Error deleting duplicates:", err.message);
-        console.log(`Successfully removed ${this.changes} duplicate agents.`);
+    // 1. Wipe all usage history
+    db.run(`DELETE FROM usage_logs`, function(err) {
+        if (err) return console.error("Error clearing logs:", err.message);
+        console.log(`✅ Cleared all usage history records.`);
     });
 
-    // 2. Clean up historical logs for those IDs
-    db.run(`DELETE FROM usage_logs WHERE received = 0 AND sent = 0`, (err) => {
-        if (err) console.error("Error cleaning logs:", err.message);
-        console.log("Cleanup complete.");
+    // 2. Wipe all clients
+    db.run(`DELETE FROM clients`, function(err) {
+        if (err) return console.error("Error clearing clients:", err.message);
+        console.log(`✅ Cleared all client records (Fresh Start).`);
+    });
+
+    // 3. Clear sequences
+    db.run(`DELETE FROM sqlite_sequence WHERE name='usage_logs' OR name='clients'`, (err) => {
+        if (!err) console.log("✅ Auto-increment sequences reset.");
+    });
+
+    // 4. Vacuum the database to clean the file
+    db.run(`VACUUM`, (err) => {
+        if (err) console.error("Error vacuuming database:", err.message);
+        else console.log("✅ Database vacuumed and optimized.");
+        console.log("--- [NUCLEAR RESET] COMPLETE ---\n");
         db.close();
     });
 });

@@ -39,12 +39,14 @@ const initDb = () => {
     });
 };
 
+// Update Client with ID Unification
 const updateClient = (id, hostname, sent, received, type = 'classic') => {
     return new Promise((resolve, reject) => {
         const now = new Date().toISOString();
+        const cleanHostname = hostname.trim().toLowerCase();
         
         // Identity Lock Logic:
-        // Instead of just Conflict(id), we check for Conflict(hostname)
+        // Instead of just Conflict(id), we check for Conflict(cleanHostname)
         // This merges any "Duplicate" IDs that share the same Computer Name!
         db.run(`INSERT INTO clients (id, hostname, type, last_seen, total_sent, total_received)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -53,12 +55,12 @@ const updateClient = (id, hostname, sent, received, type = 'classic') => {
                 last_seen = excluded.last_seen,
                 total_sent = total_sent + excluded.total_sent,
                 total_received = total_received + excluded.total_received`,
-        [id, hostname, type, now, sent, received],
+        [id, cleanHostname, type, now, sent, received],
         function(err) {
             if (err) return reject(err);
             
             // Get the actual stored ID (after internal merge) for the log
-            db.get(`SELECT id FROM clients WHERE hostname = ?`, [hostname], (err, row) => {
+            db.get(`SELECT id FROM clients WHERE hostname = ?`, [cleanHostname], (err, row) => {
                 if (err || !row) return reject(err || new Error("ID not found"));
                 
                 // Insert log
